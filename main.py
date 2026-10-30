@@ -5,7 +5,7 @@ EnglishCard - Приложение для изучения английског�
 """
 
 import streamlit as st
-import psycopg2
+import psycopg
 import pandas as pd
 import random
 
@@ -24,52 +24,54 @@ st.set_page_config(
 # ============================================================
 
 def get_db_connection():
-    """
-    TODO: Реализовать подключение к PostgreSQL
-    Параметры подключения:
-    - host: localhost
-    - database: english_card
-    - user: postgres
-    - password: postgres
-    """
-    pass
+    conn = psycopg.connect(
+        host='localhost',
+        dbname='english_card',
+        user='postgres',
+        password='postgres',
+        port='5432'
+    )
+    return conn
 
 
-def init_database():
-    """
-    CREATE table if not EXISTS users (
-        id SERIAL PRIMARY KEY, 
-        username VARCHAR(50) NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
+def init_database(conn):
+    cursor = conn.cursor()
 
-    CREATE TABLE IF NOT EXISTS common_words (
-        id SERIAL PRIMARY KEY, 
-        russian_word VARCHAR(50) NOT NULL,
-        english_word VARCHAR(50) NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
+    with open('create_tables.sql', 'r', encoding='utf-8') as sql_file:
+        sql_script = sql_file.read()
 
-    CREATE TABLE IF NOT EXISTS user_words (
-        id SERIAL PRIMARY KEY, 
-        user_id INTEGER NOT NULL REFERENCES users(id),
-        russian_word VARCHAR(50) NOT NULL,
-        english_word VARCHAR(50) NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
+    cursor.execute(sql_script)
 
-    CREATE TABLE IF NOT EXISTS learning_stats (
-        id SERIAL PRIMARY KEY, 
-        user_id INTEGER NOT NULL REFERENCES users(id),
-        word_id INTEGER NOT NULL,
-        word_type VARCHAR(20) NOT NULL CHECK (word_type IN ('common', 'user')),
-        correct_answers INTEGER DEFAULT 0,
-        total_attempts INTEGER DEFAULT 0,
-        last_reviewed TIMESTAMP
-    );
+    conn.commit()
+
+    print('Tables created')
     
-    Также заполнить common_words начальными словами (минимум 10 слов)
-    """
+    # Также заполнить common_words начальными словами (минимум 10 слов)
+
+    words_data = [
+        ('яблоко', 'apple'),
+        ('груша', 'pear'),
+        ('дыня', 'melon'),
+        ('арбуз', 'watermelon'),
+        ('машина', 'car'),
+        ('сок', 'juice'),
+        ('вода', 'water'),
+        ('голубой', 'blue'),
+        ('радуга', 'rainbow'),
+        ('компьютер', 'computer')
+    ]
+
+    cursor.execute("SELECT COUNT(*) FROM common_words")
+    if cursor.fetchone()[0] == 0:
+        cursor.executemany(
+            "INSERT INTO common_words(russian_word, english_word) VALUES(%s, %s)", words_data
+        )
+    conn.commit()
+    
+    print('Words inserted')
+
+    cursor.close()
+
     pass
 
 
@@ -239,5 +241,14 @@ def main():
     #     pass
 
 
+# if __name__ == "__main__":
+#     main()
+
 if __name__ == "__main__":
-    main()
+    try:
+        connection = get_db_connection()
+        init_database(connection)
+        connection.close()
+        print("База данных успешно инициализирована!")
+    except Exception as e:
+        print(f"Ошибка при подключении или инициализации БД: {e}")
