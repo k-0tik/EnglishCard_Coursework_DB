@@ -76,20 +76,41 @@ def init_database(conn):
 
 
 def login_user(username):
-    """
-    TODO: Реализовать вход пользователя
-    Если пользователь существует - вернуть его id
-    Если нет - создать нового и вернуть его id
-    """
-    pass
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT id FROM users WHERE username = %s", (username,))
+    user = cursor.fetchone()
+    
+    if user:
+        user_id = user[0]
+    else:
+        cursor.execute("INSERT INTO users (username) VALUES (%s) RETURNING id", (username,))
+        user_id = cursor.fetchone()[0]
+        conn.commit()
+        
+    cursor.close()
+    conn.close()
+    print(user_id)
+    return user_id
 
 
 def get_user_words(user_id):
     """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT id, russian_word, english_word FROM common_words LEFT JOIN user_words WHERE user_id = %s", (user_id,))
+    user_words = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+    print(user_words)
+    return user_words
+
     TODO: Получить все слова пользователя (общие + персональные)
     Возвращает список словарей: [{'id': 1, 'russian_word': 'красный', 'english_word': 'red', 'word_type': 'common'}, ...]
     """
-    pass
 
 
 def add_personal_word(user_id, russian_word, english_word):
@@ -252,3 +273,7 @@ if __name__ == "__main__":
         print("База данных успешно инициализирована!")
     except Exception as e:
         print(f"Ошибка при подключении или инициализации БД: {e}")
+
+login_user(input('Введите логин: '))
+
+# get_user_words(input('Введите айдишку: '))
