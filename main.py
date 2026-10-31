@@ -96,11 +96,21 @@ def login_user(username):
 
 
 def get_user_words(user_id):
-    """
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(row_factory=psycopg.rows.dict_row)
 
-    cursor.execute("SELECT id, russian_word, english_word FROM common_words LEFT JOIN user_words WHERE user_id = %s", (user_id,))
+    request = """
+        SELECT id, russian_word, english_word, 'common' AS word_type 
+        FROM common_words
+        
+        UNION ALL
+        
+        SELECT id, russian_word, english_word, 'user' AS word_type 
+        FROM user_words 
+        WHERE user_id = %s
+    """
+    
+    cursor.execute(request, (user_id,))
     user_words = cursor.fetchall()
 
     cursor.close()
@@ -108,41 +118,72 @@ def get_user_words(user_id):
     print(user_words)
     return user_words
 
-    TODO: Получить все слова пользователя (общие + персональные)
-    Возвращает список словарей: [{'id': 1, 'russian_word': 'красный', 'english_word': 'red', 'word_type': 'common'}, ...]
-    """
-
 
 def add_personal_word(user_id, russian_word, english_word):
-    """
-    TODO: Добавить персональное слово для пользователя
-    Проверить, нет ли уже такого слова
-    Возвращает True/False
-    """
-    pass
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    word_added = False
+
+    cursor.execute("SELECT id FROM user_words WHERE user_id = %s AND russian_word = %s AND english_word = %s", (user_id, russian_word, english_word,))
+    if cursor.fetchone() is None:
+        cursor.execute("INSERT INTO user_words (user_id, russian_word, english_word) VALUES (%s, %s, %s)", (user_id, russian_word, english_word,))
+        conn.commit()
+        word_added = True
+    
+    cursor.close()
+    conn.close()
+    return word_added
 
 
 def delete_personal_word(user_id, word_id):
-    """
-    TODO: Удалить персональное слово пользователя
-    Возвращает True/False
-    """
-    pass
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    word_deleted = False
+    
+    cursor.execute("SELECT * FROM user_words WHERE user_id = %s AND id = %s", (user_id, word_id,))
+    if cursor.fetchone() is not None:
+        cursor.execute("DELETE FROM user_words WHERE user_id = %s AND id = %s", (user_id, word_id,))
+        conn.commit()
+        word_deleted = True
+    
+    cursor.close()
+    conn.close()
+    return word_deleted
 
 
 def update_stats(user_id, word_id, word_type, is_correct):
-    """
-    TODO: Обновить статистику изучения слова
-    """
-    pass
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT id FROM learning_stats WHERE user_id = %s AND word_id = %s AND word_type = %s", (user_id, word_id, word_type,))
+    correct_increment = 1 if is_correct else 0
+    record = cursor.fetchone()
+    if record is None:
+        cursor.execute("INSERT INTO learning_stats (user_id, word_id, word_type, correct_answers, total_attempts, last_reviewed) " \
+        "VALUES (%s, %s, %s, %s, 1, CURRENT_TIMESTAMP)", (user_id, word_id, word_type, correct_increment))
+    else:
+        cursor.execute("UPDATE learning_stats " \
+        "SET correct_answers = correct_answers + %s," \
+        "total_attempts = total_attempts + 1," \
+        "last_reviewed = CURRENT_TIMESTAMP WHERE id = %s", (correct_increment, record[0]))
+    conn.commit()
+    cursor.close()
+    conn.close()
 
 
 def get_statistics(user_id):
-    """
-    TODO: Получить статистику пользователя
-    Возвращает словарь со статистикой
-    """
-    pass
+    conn = get_db_connection()
+    cursor = conn.cursor(row_factory=psycopg.rows.dict_row)
+
+    cursor.execute("SELECT * FROM learning_stats WHERE user_id = %s", (user_id,))
+    user_stats = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+    print(user_stats)
+    return user_stats
 
 
 # ============================================================
@@ -150,12 +191,23 @@ def get_statistics(user_id):
 # ============================================================
 
 def generate_options(correct_word, all_words):
-    """
-    TODO: Сгенерировать 4 варианта ответа для викторины
-    Один вариант - правильный перевод, остальные - случайные слова из словаря
-    Если слов не хватает, можно добавить слова-заглушки
-    """
-    pass
+    correct_translation = correct_word['english_word']
+
+    other_translations = []
+    for w in all_words:
+        if w['english_word'] != correct_translation:
+            other_translations.append(w['english_word'])
+
+    while len(other_translations) < 3:
+        other_translations.append("unknown")
+    
+    wrong_options = random.sample(other_translations, 3)
+    
+    options = [correct_translation] + wrong_options
+    
+    random.shuffle(options)
+    
+    return options
 
 
 # ============================================================
@@ -244,7 +296,9 @@ def main():
     # st.session_state.username
     
     # TODO: Инициализация БД
-    # init_database()
+    # connection = get_db_connection()
+    # init_database(connection)
+    # connection.close()
     
     # TODO: Боковая панель с авторизацией
     # render_sidebar()
@@ -274,6 +328,31 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Ошибка при подключении или инициализации БД: {e}")
 
-login_user(input('Введите логин: '))
+# login_user(input('Введите логин: '))
 
 # get_user_words(input('Введите айдишку: '))
+
+# test_user_id = int(input('Введите айдишку: '))
+# russian_word = input("Введите слово на русском: ")
+# english_word = input("Введите перевод на английский: ")
+
+# result = add_personal_word(test_user_id, russian_word, english_word)
+    
+# if result:
+#     print('Слово добавлено!')
+# else:
+#     print('В словарике уже есть это слово, попробуйте добавить другое')
+
+# user_id = input("Введите айдишку: ")
+# word_id = input("Введите айдишку слова, которое нужно удалить: ")
+
+# if delete_personal_word(user_id, word_id):
+#     print('Слово удалено!')
+# else:
+#     print('В словарике нет этого слова, попробуйте другое')
+
+# update_stats(1, 1, 'common', True)
+# update_stats(1, 1, 'common', True)
+# update_stats(1, 1, 'common', False)
+
+# get_statistics(1)
